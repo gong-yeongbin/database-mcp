@@ -1,5 +1,5 @@
 {
-  "name": "@yb9/database-mcp",
+  "name": "@dudqls816/database-mcp",
   "version": "0.1.0",
   "description": "MCP server for querying Microsoft SQL Server databases",
   "license": "MIT",
@@ -22,7 +22,7 @@
   ],
   "type": "module",
   "bin": {
-    "yb9-database-mcp": "./dist/index.js"
+    "dudqls816-database-mcp": "./dist/index.js"
   },
   "files": [
     "dist"

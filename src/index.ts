@@ -30,7 +30,7 @@ export function buildServer(
     driver: Driver,
     opts: { allowProcedure: boolean; maxRows: number },
 ): McpServer {
-    const server = new McpServer({ name: '@yb9/database-mcp', version: '0.1.0' });
+    const server = new McpServer({ name: '@dudqls816/database-mcp', version: '0.1.0' });
 
     server.registerTool(
         'list_tables',

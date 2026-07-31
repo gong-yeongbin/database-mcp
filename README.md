@@ -1,4 +1,4 @@
-# @yb9/database-mcp
+# @dudqls816/database-mcp
 
 Microsoft SQL Server 를 조회하는 MCP 서버. LLM 이 스키마를 탐색하고 쿼리를 실행할 수 있게 한다.
 
@@ -25,9 +25,9 @@ CLI 로 등록하는 방법과 설정 파일을 직접 쓰는 방법이 있다. 
 **방법 A. CLI**
 
 ```bash
-claude mcp add yb9-database -s local \
+claude mcp add dudqls816-database -s local \
   -e DATABASE_URL='mssql://mcp_ro:Str0ng%21Passw0rd@localhost:1433/mydb' \
-  -- npx -y @yb9/database-mcp
+  -- npx -y @dudqls816/database-mcp
 ```
 
 **방법 B. 설정 파일 직접 작성**
@@ -37,9 +37,9 @@ claude mcp add yb9-database -s local \
 ```json
 {
   "mcpServers": {
-    "yb9-database": {
+    "dudqls816-database": {
       "command": "npx",
-      "args": ["-y", "@yb9/database-mcp"],
+      "args": ["-y", "@dudqls816/database-mcp"],
       "env": {
         "DATABASE_URL": "mssql://mcp_ro:Str0ng%21Passw0rd@localhost:1433/mydb"
       }
@@ -55,16 +55,16 @@ claude mcp add yb9-database -s local \
 전역 설치를 선호하면 `npx` 대신 명령을 직접 쓴다.
 
 ```bash
-npm i -g @yb9/database-mcp
-claude mcp add yb9-database -s local \
+npm i -g @dudqls816/database-mcp
+claude mcp add dudqls816-database -s local \
   -e DATABASE_URL='mssql://mcp_ro:pw@localhost:1433/mydb' \
-  -- yb9-database-mcp
+  -- dudqls816-database-mcp
 ```
 
 **3. 확인한다.**
 
 ```bash
-claude mcp get yb9-database    # ✔ Connected
+claude mcp get dudqls816-database    # ✔ Connected
 ```
 
 DB 가 꺼져 있어도 `Connected` 로 나온다. 연결은 첫 tool 호출 때 이루어지므로 정상이다.
@@ -125,10 +125,10 @@ mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false
 `ALLOW_PROCEDURE=true` 로 켜면 tool 3개가 등록된다.
 
 ```bash
-claude mcp add yb9-database -s local \
+claude mcp add dudqls816-database -s local \
   -e DATABASE_URL='mssql://user:pw@host:1433/mydb' \
   -e ALLOW_PROCEDURE=true \
-  -- npx -y @yb9/database-mcp
+  -- npx -y @dudqls816/database-mcp
 ```
 
 `list_procedures` 와 `describe_procedure` 는 조회만 한다. 실행은 `call_procedure` 다.
@@ -202,12 +202,12 @@ GRANT EXECUTE ON dbo.GetOrders TO mcp_ro;
 {
   "permissions": {
     "allow": [
-      "mcp__yb9-database__list_tables",
-      "mcp__yb9-database__describe_table",
-      "mcp__yb9-database__query"
+      "mcp__dudqls816-database__list_tables",
+      "mcp__dudqls816-database__describe_table",
+      "mcp__dudqls816-database__query"
     ],
     "deny": [
-      "mcp__yb9-database__call_procedure"
+      "mcp__dudqls816-database__call_procedure"
     ]
   }
 }
@@ -230,9 +230,9 @@ GRANT EXECUTE ON dbo.GetOrders TO mcp_ro;
 > 혼자 쓴다면 `-s local` 또는 `-s user` 를 쓴다.
 
 ```bash
-claude mcp get yb9-database
+claude mcp get dudqls816-database
 claude mcp list
-claude mcp remove yb9-database -s local
+claude mcp remove dudqls816-database -s local
 ```
 
 ### Claude Desktop
@@ -243,9 +243,9 @@ claude mcp remove yb9-database -s local
 ```json
 {
   "mcpServers": {
-    "yb9-database": {
+    "dudqls816-database": {
       "command": "npx",
-      "args": ["-y", "@yb9/database-mcp"],
+      "args": ["-y", "@dudqls816/database-mcp"],
       "env": {
         "DATABASE_URL": "mssql://mcp_ro:pw@localhost:1433/mydb"
       }
@@ -283,7 +283,7 @@ sqlcmd -S localhost,1433 -U sa -P pw -Q "DELETE FROM users"
 **3. 서버를 다른 설정으로 직접 실행**
 
 ```bash
-DATABASE_URL='...' ALLOW_PROCEDURE=true npx @yb9/database-mcp
+DATABASE_URL='...' ALLOW_PROCEDURE=true npx @dudqls816/database-mcp
 ```
 
 **4. 설정 파일 수정**
@@ -291,7 +291,7 @@ DATABASE_URL='...' ALLOW_PROCEDURE=true npx @yb9/database-mcp
 `ALLOW_PROCEDURE=true` 로 재등록하면 된다.
 
 **5. 다른 MCP 서버 경유**
-`deny` 규칙은 `mcp__yb9-database__*` 라는 이름에만 걸린다. DB 에 접근하는 다른 서버는 통제 밖이다.
+`deny` 규칙은 `mcp__dudqls816-database__*` 라는 이름에만 걸린다. DB 에 접근하는 다른 서버는 통제 밖이다.
 
 **6. 접속 정보 노출**
 `DATABASE_URL` 은 `~/.claude.json` 에 평문으로 저장된다. `-s project` 로 등록했다면
@@ -375,12 +375,12 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 {
   "permissions": {
     "allow": [
-      "mcp__yb9-database__list_tables",
-      "mcp__yb9-database__describe_table",
-      "mcp__yb9-database__query"
+      "mcp__dudqls816-database__list_tables",
+      "mcp__dudqls816-database__describe_table",
+      "mcp__dudqls816-database__query"
     ],
     "deny": [
-      "mcp__yb9-database__call_procedure",
+      "mcp__dudqls816-database__call_procedure",
 
       "Bash(sqlcmd:*)",
       "Bash(mssql-cli:*)",
@@ -418,7 +418,7 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 ```bash
 node -e "const sql=require('mssql'); ..."   # sqlcmd 없이도 쓰기가 된다
 python -c "import pymssql; ..."
-npx @yb9/database-mcp                        # 서버를 다른 설정으로 재실행
+npx @dudqls816/database-mcp                        # 서버를 다른 설정으로 재실행
 ```
 
 **부작용을 알고 넣어야 한다.** `node` 와 `python` 을 막으면 Claude 가 `npm test`,
@@ -454,12 +454,12 @@ npx @yb9/database-mcp                        # 서버를 다른 설정으로 재
 {
   "permissions": {
     "allow": [
-      "mcp__yb9-database__list_tables",
-      "mcp__yb9-database__describe_table",
-      "mcp__yb9-database__query",
-      "mcp__yb9-database__list_procedures",
-      "mcp__yb9-database__describe_procedure",
-      "mcp__yb9-database__call_procedure"
+      "mcp__dudqls816-database__list_tables",
+      "mcp__dudqls816-database__describe_table",
+      "mcp__dudqls816-database__query",
+      "mcp__dudqls816-database__list_procedures",
+      "mcp__dudqls816-database__describe_procedure",
+      "mcp__dudqls816-database__call_procedure"
     ],
     "deny": [
       "Bash(sqlcmd:*)",
