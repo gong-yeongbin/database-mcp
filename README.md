@@ -5,6 +5,18 @@ Microsoft SQL Server 를 조회하는 MCP 서버. LLM 이 스키마를 탐색하
 **`SELECT` 만 실행한다.** 임의 SQL 을 실행하는 tool 은 없다. 저장 프로시저 실행만
 `ALLOW_PROCEDURE=true` 로 따로 열 수 있고, 이것이 유일하게 남은 쓰기 경로다.
 
+## 목차
+
+**쓰기 시작하려면** — [빠른 시작](#빠른-시작) · [업데이트](#업데이트) · [환경변수](#환경변수) · [Tool](#tool)
+
+**프로시저를 켜려면** — [프로시저](#프로시저) · [켜기 전에 알아야 할 것](#켜기-전에-알아야-할-것)
+
+**설정을 이해하려면** — [두 개의 층](#두-개의-층) · [스코프와 저장 위치](#스코프와-저장-위치)
+
+**보안을 검토하려면** — [무엇이 실제로 통제되는가](#보안-무엇이-실제로-통제되는가) · [우회 가능한 경로](#우회-가능한-경로) · [permissions 로 좁히기](#permissions-로-좁히기) · [프로시저 DDL](#프로시저-ddl-은-어떻게-막히나) · [DB 권한으로 좁히기](#db-권한으로-좁히기)
+
+**운영 중 걸리는 것** — [알아둘 것](#알아둘-것)
+
 ## 빠른 시작
 
 **1. 읽기 전용 계정을 만든다.** 이것이 유일하게 우회 불가능한 통제다. 뒤에 나오는 설정은
@@ -71,6 +83,39 @@ DB 가 꺼져 있어도 `Connected` 로 나온다. 연결은 첫 tool 호출 때
 
 이제 "테이블 목록 보여줘", "users 테이블 구조", "최근 주문 10건" 처럼 요청하면 된다.
 임의 SQL 을 실행하는 tool 은 애초에 존재하지 않는다.
+
+## 업데이트
+
+등록 방식에 따라 다르다.
+
+| 방식 | 최신 버전 반영 |
+| --- | --- |
+| `npx` (방법 A, B) | 자동. 단 캐시가 남아 있는 동안은 이전 버전을 쓴다 |
+| 전역 설치 | 수동. 직접 업데이트해야 한다 |
+
+`npx` 는 받은 패키지를 캐시에 두고 재사용하므로 새 버전이 즉시 반영되지는 않는다.
+바로 받으려면 `@latest` 를 붙여 실행한다.
+
+```bash
+npx -y @dudqls816/database-mcp@latest
+```
+
+전역 설치로 쓴다면 직접 올린다.
+
+```bash
+npm update -g @dudqls816/database-mcp
+```
+
+현재 배포된 버전과 설치된 버전은 이렇게 확인한다.
+
+```bash
+npm view @dudqls816/database-mcp version   # registry 의 최신 버전
+npm ls -g @dudqls816/database-mcp          # 전역 설치된 버전
+```
+
+**Major 버전은 자동으로 넘어오지 않는다.** `npx` 는 `^0.1.0` 처럼 호환 범위로 캐시하므로
+`0.x` 안에서는 알아서 올라가지만 `1.0.0` 은 그 범위 밖이다. Major 가 올라가면 tool 이름이나
+설정이 바뀌었을 수 있으니, 릴리스 노트를 확인하고 위 `@latest` 명령으로 명시적으로 받는다.
 
 ## 환경변수
 
@@ -301,25 +346,18 @@ DATABASE_URL='...' ALLOW_PROCEDURE=true npx @dudqls816/database-mcp
 읽기 전용 전제를 벗어나는 경로다.
 
 **7. `ALLOW_PROCEDURE=true` 는 남은 유일한 쓰기 경로다.**
-켜면 `call_procedure` 가 등록되고, 이 tool 은 `EXEC` 한 문장인지만 검사한다. **프로시저 본문이
-무엇을 하는지는 검사하지 않는다.** 즉 데이터를 바꾸는 프로시저가 하나라도 있으면 그것으로
-쓰기가 된다.
+켜면 `call_procedure` 가 등록되고, 이 tool 은 호출 문장의 형태만 검사한다. **프로시저 본문이
+무엇을 하는지는 검사하지 않는다.** 데이터를 바꾸는 프로시저가 하나라도 있으면 그것으로
+쓰기가 된다. 차단되는 형태와 통과하는 형태는
+["켜기 전에 알아야 할 것"](#켜기-전에-알아야-할-것)에 정리해 두었다.
 
-```
-EXEC dbo.DeleteOldOrders      -- 본문의 DELETE 가 그대로 실행된다
-```
-
-`EXEC` 뒤에 프로시저 이름이 오는 형태만 받으므로 `EXEC('...')` 같은 동적 SQL 은 거부된다.
-그래도 아래는 통과한다.
+여기에 더해 시스템 프로시저로 권한 자체를 바꿀 수도 있다.
 
 ```sql
-EXEC dbo.DeleteOldOrders                      -- 본문의 쓰기는 검사하지 않는다
-EXEC sp_rename 'users', 'users_old'           -- 차단 목록에 없는 시스템 프로시저
 EXEC sp_addrolemember 'db_owner', 'mcp_ro'    -- 권한 상승
 ```
 
-즉 `ALLOW_PROCEDURE=true` 는 프로시저를 통한 쓰기를 여는 것이다. 프로시저를 쓰지 않는다면
-켜지 않는다. 범위를 좁히려면 `GRANT EXECUTE` 를 프로시저별로 준다.
+프로시저를 쓰지 않는다면 켜지 않는다. 범위를 좁히려면 `GRANT EXECUTE` 를 프로시저별로 준다.
 
 **8. `query` 의 키워드 검사는 문자열 매칭이다.**
 `assertReadOnly` 는 주석과 문자열 리터럴을 제거한 뒤 `SELECT` 또는 `WITH` 로 시작하는지 보고
@@ -345,17 +383,17 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 | `query` 의 읽기 전용 가드 | 8 |
 | **DB 계정 권한** | **없음** |
 
-### 두 층으로 좁힌다
+### `permissions` 로 좁히기
 
 우회를 좁히는 데는 두 층이 있다. **`permissions` 층은 Claude 가 실행하는 것만** 막고,
-사용자가 터미널에 직접 치는 것은 막지 못한다. **DB 권한 층이 실제 통제다.**
-아래는 `permissions` 층을 `ALLOW_PROCEDURE` 값에 따라 두 경우로 나눠 보이고,
-마지막에 DB 권한 층을 한데 모은다.
+사용자가 터미널에 직접 치는 것은 막지 못한다. **[DB 권한 층](#db-권한으로-좁히기)이 실제 통제다.**
 
-#### `permissions` 층 — 경로별 정리
+이 절은 `permissions` 층을 `ALLOW_PROCEDURE` 값에 따라 두 경우로 나눠 보인다.
 
-`ALLOW_PROCEDURE=false` 를 전제로 한다. 이 상태에서 등록되는 tool 은
-`list_tables`, `describe_table`, `query` 셋뿐이고 프로시저 tool 은 존재하지 않는다.
+**경우 1. `ALLOW_PROCEDURE=false`**
+
+등록되는 tool 은 `list_tables`, `describe_table`, `query` 셋뿐이고 프로시저 tool 은
+존재하지 않는다.
 
 | # | 경로 | `permissions` | DB 권한 |
 | --- | --- | --- | --- |
@@ -409,7 +447,7 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 `call_procedure` 는 지금 등록조차 되지 않지만 `deny` 에 미리 넣어 둔다. 나중에
 `ALLOW_PROCEDURE=true` 로 재등록해도 `deny` 가 `allow` 보다 우선하므로 막힌다.
 
-#### 런타임을 통째로 막는 이유
+**런타임을 통째로 막는 이유**
 
 두 번째 묶음(`node`, `python`, `npx` 등)이 **가장 중요하다.** DB 클라이언트 CLI 를 다
 막아도 런타임이 열려 있으면 한 줄로 뚫린다. 이 서버를 설치한 프로젝트에는 `mssql`
@@ -441,7 +479,7 @@ npx @dudqls816/database-mcp                        # 서버를 다른 설정으�
 
 **Claude 의 무심코 하는 우회를 막는 용도이지 의도적 우회를 막지 못한다.**
 
-#### `permissions` 층 — `ALLOW_PROCEDURE=true` 인 경우
+**경우 2. `ALLOW_PROCEDURE=true`**
 
 프로시저를 써야 해서 켰다면, **쓰기 경로를 `call_procedure` 하나로 좁히는 것**이 목표가 된다.
 그 tool 만 남기고 다른 우회 경로는 모두 닫는다.
@@ -491,7 +529,7 @@ npx @dudqls816/database-mcp                        # 서버를 다른 설정으�
 `list_procedures` 와 `describe_procedure` 는 `readOnlyHint` 인 조회 tool 이라 함께 허용한다.
 이것이 없으면 프로시저 이름과 파라미터를 모르는 채로 `call_procedure` 를 써야 한다.
 
-#### 프로시저 자체를 수정·삭제하는 DDL 은 어떻게 막히나
+### 프로시저 DDL 은 어떻게 막히나
 
 `call_procedure` 는 프로시저를 **실행**할 뿐이다. 프로시저 정의를 바꾸는
 `CREATE` / `ALTER` / `DROP PROCEDURE` 는 이 tool 로 실행되지 않는다. `assertProcedureCall`
@@ -511,9 +549,9 @@ node -e "const sql=require('mssql'); ... request().batch('ALTER PROCEDURE dbo.Ge
 런타임과 CLI 를 막는 것이기 때문이다. 다만 절대 경로 호출과 GUI 클라이언트는
 그대로 빠져나가므로, 확실한 통제는 아래 DB 권한 층이다.
 
-#### DB 권한 층 — 유일하게 우회 불가능한 통제
+### DB 권한으로 좁히기
 
-위 두 경우 모두 `permissions` 는 tool 이름에만 걸린다. `EXEC` 뒤의 프로시저 이름도,
+**유일하게 우회 불가능한 통제다.** 위 두 경우 모두 `permissions` 는 tool 이름에만 걸린다. `EXEC` 뒤의 프로시저 이름도,
 `query` 안의 SQL 문자열도 보지 못한다. 그래서 `call_procedure` 를 허용하는 순간
 **그 계정이 실행할 수 있는 모든 프로시저**가 열리고, `GetOrders` 만 허용하고
 `DeleteOldOrders` 는 막는 구분은 `permissions` 로 할 수 없다. 그 구분은 DB 에서만 된다.
