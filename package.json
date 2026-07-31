@@ -2,6 +2,24 @@
   "name": "@yb9/database-mcp",
   "version": "0.1.0",
   "description": "MCP server for querying Microsoft SQL Server databases",
+  "license": "MIT",
+  "author": "공영빈 <yb.gong@shareit.kr>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/gong-yeongbin/database-mcp.git"
+  },
+  "homepage": "https://github.com/gong-yeongbin/database-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/gong-yeongbin/database-mcp/issues"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "mssql",
+    "sqlserver",
+    "database",
+    "claude"
+  ],
   "type": "module",
   "bin": {
     "yb9-database-mcp": "./dist/index.js"
@@ -9,6 +27,9 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=20"
   },
@@ -27,6 +48,7 @@
     "@modelcontextprotocol/client": "^2.0.0",
     "@types/mssql": "^12.3.0",
     "@types/node": "^24.0.0",
+    "release-it": "^21.0.0",
     "typescript": "^5.7.0"
   }
 }

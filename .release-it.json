@@ -1,0 +1,19 @@
+{
+  "hooks": {
+    "before:init": ["npm run typecheck", "npm test"],
+    "after:bump": "npm run build"
+  },
+  "git": {
+    "commitMessage": "chore: release v${version}",
+    "tagName": "v${version}",
+    "requireCleanWorkingDir": true,
+    "requireUpstream": true
+  },
+  "npm": {
+    "publish": true
+  },
+  "github": {
+    "release": true,
+    "releaseName": "v${version}"
+  }
+}
