@@ -1,19 +1,66 @@
-# v* 태그가 push 되면 npm registry 로 패키지를 배포하는 workflow
+# v* 태그 push 또는 수동 실행(버전 선택)으로 npm registry 에 패키지를 배포하는 workflow
 name: publish
 
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      increment:
+        description: '올릴 버전 단위'
+        type: choice
+        required: true
+        default: patch
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
+  # 수동 실행일 때만 동작한다. 버전을 올리고 커밋·태그를 push 한다.
+  bump:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - run: npm ci
+
+      - name: git identity 설정
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: 버전 bump 및 태그 push
+        id: bump
+        run: |
+          npx release-it "${{ inputs.increment }}" --ci
+          echo "version=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+
   publish:
+    needs: [bump]
+    # 태그 push 로 들어온 경우 bump 는 skip 되므로 always() 로 받고 실패만 걸러낸다.
+    if: always() && needs.bump.result != 'failure'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          # 수동 실행이면 bump 가 만든 커밋을, 태그 push 면 그 태그를 받는다.
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', needs.bump.outputs.version) || github.ref }}
 
       - uses: actions/setup-node@v7
         with:
@@ -26,13 +73,17 @@ jobs:
 
       - run: npm test
 
-      # 태그가 가리키는 버전과 package.json 의 버전이 다르면 배포하지 않는다.
+      # 배포하려는 버전과 package.json 의 버전이 다르면 배포하지 않는다.
       - name: 태그와 package.json 버전 일치 확인
         run: |
-          tag="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            want="${{ needs.bump.outputs.version }}"
+          else
+            want="${GITHUB_REF_NAME#v}"
+          fi
           pkg="$(node -p 'require("./package.json").version')"
-          if [ "$tag" != "$pkg" ]; then
-            echo "태그($tag)와 package.json($pkg) 의 버전이 다릅니다." >&2
+          if [ "$want" != "$pkg" ]; then
+            echo "배포 대상($want)과 package.json($pkg) 의 버전이 다릅니다." >&2
             exit 1
           fi
 
