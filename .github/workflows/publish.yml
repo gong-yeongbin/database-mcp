@@ -1,0 +1,43 @@
+# v* 태그가 push 되면 npm registry 로 패키지를 배포하는 workflow
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm test
+
+      # 태그가 가리키는 버전과 package.json 의 버전이 다르면 배포하지 않는다.
+      - name: 태그와 package.json 버전 일치 확인
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p 'require("./package.json").version')"
+          if [ "$tag" != "$pkg" ]; then
+            echo "태그($tag)와 package.json($pkg) 의 버전이 다릅니다." >&2
+            exit 1
+          fi
+
+      - run: npm run build
+
+      - run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

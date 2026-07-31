@@ -1,7 +1,6 @@
 {
   "hooks": {
-    "before:init": ["npm run typecheck", "npm test"],
-    "after:bump": "npm run build"
+    "before:init": ["npm run typecheck", "npm test"]
   },
   "git": {
     "commitMessage": "chore: release v${version}",
@@ -10,10 +9,9 @@
     "requireUpstream": true
   },
   "npm": {
-    "publish": true
+    "publish": false
   },
   "github": {
-    "release": true,
-    "releaseName": "v${version}"
+    "release": false
   }
 }
