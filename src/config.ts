@@ -4,8 +4,6 @@ import type { config as MssqlConfig } from 'mssql';
 
 export interface Config {
     db: MssqlConfig;
-    /** 프로시저 실행 tool 을 등록할지. 프로시저 본문은 데이터를 바꿀 수 있다. */
-    allowProcedure: boolean;
     maxRows: number;
 }
 
@@ -81,7 +79,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
 
     return {
         db: parseDatabaseUrl(raw),
-        allowProcedure: env.ALLOW_PROCEDURE === 'true',
         maxRows,
     };
 }

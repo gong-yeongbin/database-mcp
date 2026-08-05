@@ -26,10 +26,7 @@ async function guard(fn: () => Promise<string>) {
     }
 }
 
-export function buildServer(
-    driver: Driver,
-    opts: { allowProcedure: boolean; maxRows: number },
-): McpServer {
+export function buildServer(driver: Driver, opts: { maxRows: number }): McpServer {
     const server = new McpServer({ name: '@dudqls816/database-mcp', version: '0.1.0' });
 
     server.registerTool(
@@ -86,63 +83,59 @@ export function buildServer(
             ),
     );
 
-    // 프로시저 tool 은 ALLOW_PROCEDURE 일 때만 등록한다. 등록 후 거부하는
-    // 방식과 달리 모델 컨텍스트에서 아예 사라진다.
-    if (opts.allowProcedure) {
-        server.registerTool(
-            'list_procedures',
-            {
-                title: '프로시저 목록',
-                description: '저장 프로시저를 스키마와 최종 수정일과 함께 나열합니다.',
-                annotations: { readOnlyHint: true },
-            },
-            () => guard(async () => formatProcedureList(await driver.listProcedures())),
-        );
+    server.registerTool(
+        'list_procedures',
+        {
+            title: '프로시저 목록',
+            description: '저장 프로시저를 스키마와 최종 수정일과 함께 나열합니다.',
+            annotations: { readOnlyHint: true },
+        },
+        () => guard(async () => formatProcedureList(await driver.listProcedures())),
+    );
 
-        server.registerTool(
-            'describe_procedure',
-            {
-                title: '프로시저 파라미터',
-                description: '프로시저의 파라미터 이름, 자료형, 입출력 방향을 조회합니다.',
-                inputSchema: z.object({
-                    name: z.string().describe('프로시저 이름'),
-                    schema: z.string().default('dbo').describe('스키마 이름. 기본값 dbo'),
-                }),
-                annotations: { readOnlyHint: true },
-            },
-            ({ name, schema }) =>
-                guard(async () =>
-                    formatParameters(schema, name, await driver.describeProcedure(schema, name)),
-                ),
-        );
+    server.registerTool(
+        'describe_procedure',
+        {
+            title: '프로시저 파라미터',
+            description: '프로시저의 파라미터 이름, 자료형, 입출력 방향을 조회합니다.',
+            inputSchema: z.object({
+                name: z.string().describe('프로시저 이름'),
+                schema: z.string().default('dbo').describe('스키마 이름. 기본값 dbo'),
+            }),
+            annotations: { readOnlyHint: true },
+        },
+        ({ name, schema }) =>
+            guard(async () =>
+                formatParameters(schema, name, await driver.describeProcedure(schema, name)),
+            ),
+    );
 
-        server.registerTool(
-            'call_procedure',
-            {
-                title: '프로시저 실행',
-                description:
-                    'EXEC 문장 하나로 저장 프로시저를 실행합니다. 여러 문장과 sp_executesql 은 거부됩니다. ' +
-                    '프로시저 본문이 데이터를 바꿀 수 있으므로 되돌릴 수 없습니다. ' +
-                    '파라미터 값은 EXEC 문장 안에 직접 써야 하니 문자열은 따옴표를 이스케이프하세요. ' +
-                    '예: EXEC dbo.GetOrders @userId = 42',
-                inputSchema: z.object({
-                    sql: z.string().describe("실행할 EXEC 문장 하나. 예: EXEC dbo.GetOrders @id = 1"),
-                    maxRows: z
-                        .number()
-                        .int()
-                        .min(1)
-                        .optional()
-                        .describe(`반환할 최대 행 수. 기본값 ${opts.maxRows}`),
-                }),
-                // 프로시저 본문이 무엇을 하는지 알 수 없어 읽기 전용이라고 할 수 없다.
-                annotations: { destructiveHint: true },
-            },
-            ({ sql, maxRows }) =>
-                guard(async () =>
-                    formatProcedureResult(await driver.callProcedure(sql, maxRows ?? opts.maxRows)),
-                ),
-        );
-    }
+    server.registerTool(
+        'call_procedure',
+        {
+            title: '프로시저 실행',
+            description:
+                'EXEC 문장 하나로 저장 프로시저를 실행합니다. 여러 문장과 sp_executesql 은 거부됩니다. ' +
+                '프로시저 본문이 데이터를 바꿀 수 있으므로 되돌릴 수 없습니다. ' +
+                '파라미터 값은 EXEC 문장 안에 직접 써야 하니 문자열은 따옴표를 이스케이프하세요. ' +
+                '예: EXEC dbo.GetOrders @userId = 42',
+            inputSchema: z.object({
+                sql: z.string().describe("실행할 EXEC 문장 하나. 예: EXEC dbo.GetOrders @id = 1"),
+                maxRows: z
+                    .number()
+                    .int()
+                    .min(1)
+                    .optional()
+                    .describe(`반환할 최대 행 수. 기본값 ${opts.maxRows}`),
+            }),
+            // 프로시저 본문이 무엇을 하는지 알 수 없어 읽기 전용이라고 할 수 없다.
+            annotations: { destructiveHint: true },
+        },
+        ({ sql, maxRows }) =>
+            guard(async () =>
+                formatProcedureResult(await driver.callProcedure(sql, maxRows ?? opts.maxRows)),
+            ),
+    );
 
     return server;
 }
@@ -162,7 +155,7 @@ async function main() {
     // stdout 은 JSON-RPC 전용이다. 로그는 반드시 stderr 로 보낸다.
     console.error(
         `database-mcp 시작. ${config.db.server}:${config.db.port}/${config.db.database} ` +
-            `(프로시저 ${config.allowProcedure ? '허용' : '차단'}, 최대 ${config.maxRows}행)`,
+            `(최대 ${config.maxRows}행)`,
     );
 }
 

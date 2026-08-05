@@ -65,15 +65,6 @@ test('DATABASE_URL 이 없으면 거부한다', () => {
     assert.throws(() => loadConfig({}), /DATABASE_URL 환경변수가 필요합니다/);
 });
 
-test("ALLOW_PROCEDURE 는 문자열 'true' 일 때만 참이다", () => {
-    const url = 'mssql://sa:pw@localhost/mydb';
-    assert.equal(loadConfig({ DATABASE_URL: url }).allowProcedure, false);
-    assert.equal(loadConfig({ DATABASE_URL: url, ALLOW_PROCEDURE: 'true' }).allowProcedure, true);
-    assert.equal(loadConfig({ DATABASE_URL: url, ALLOW_PROCEDURE: 'false' }).allowProcedure, false);
-    assert.equal(loadConfig({ DATABASE_URL: url, ALLOW_PROCEDURE: '1' }).allowProcedure, false);
-    assert.equal(loadConfig({ DATABASE_URL: url, ALLOW_PROCEDURE: 'TRUE' }).allowProcedure, false);
-});
-
 test('MAX_ROWS 기본값은 1000 이고 정수만 받는다', () => {
     const url = 'mssql://sa:pw@localhost/mydb';
     assert.equal(loadConfig({ DATABASE_URL: url }).maxRows, 1000);

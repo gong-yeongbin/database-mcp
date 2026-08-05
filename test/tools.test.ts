@@ -53,19 +53,26 @@ function stubDriver(over: Partial<Driver> = {}): Driver {
 }
 
 /** 서버를 메모리 트랜스포트로 클라이언트에 연결한다. */
-async function connect(driver: Driver, allowProcedure = false) {
-    const server = buildServer(driver, { allowProcedure, maxRows: 1000 });
+async function connect(driver: Driver) {
+    const server = buildServer(driver, { maxRows: 1000 });
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'test', version: '0' });
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
     return { client, close: () => client.close() };
 }
 
-test('기본은 읽기 전용 tool 3개만 노출한다', async () => {
+test('tool 6개를 노출한다', async () => {
     const { client, close } = await connect(stubDriver());
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    assert.deepEqual(names, ['describe_table', 'list_tables', 'query']);
+    assert.deepEqual(names, [
+        'call_procedure',
+        'describe_procedure',
+        'describe_table',
+        'list_procedures',
+        'list_tables',
+        'query',
+    ]);
     await close();
 });
 
@@ -147,38 +154,13 @@ test('드라이버 예외는 프로세스를 죽이지 않고 isError 로 온다
     await close();
 });
 
-test('ALLOW_PROCEDURE 면 프로시저 tool 3개가 추가된다', async () => {
-    const { client, close } = await connect(stubDriver(), true);
-    const { tools } = await client.listTools();
-    const names = tools.map((t) => t.name).sort();
-    assert.deepEqual(names, [
-        'call_procedure',
-        'describe_procedure',
-        'describe_table',
-        'list_procedures',
-        'list_tables',
-        'query',
-    ]);
-    await close();
-});
-
-// execute tool 은 제거되었다. 어떤 설정으로도 되살아나지 않아야 한다.
-test('execute tool 은 어떤 설정에서도 등록되지 않는다', async () => {
-    for (const allowProcedure of [false, true]) {
-        const { client, close } = await connect(stubDriver(), allowProcedure);
-        const { tools } = await client.listTools();
-        assert.equal(tools.some((t) => t.name === 'execute'), false);
-        await assert.rejects(() =>
-            client.callTool({ name: 'execute', arguments: { sql: 'DELETE FROM t' } }),
-        );
-        await close();
-    }
-});
-
-test('프로시저가 차단되면 call_procedure 는 호출 자체가 실패한다', async () => {
+// execute tool 은 제거되었다. 되살아나지 않아야 한다.
+test('execute tool 은 등록되지 않는다', async () => {
     const { client, close } = await connect(stubDriver());
+    const { tools } = await client.listTools();
+    assert.equal(tools.some((t) => t.name === 'execute'), false);
     await assert.rejects(() =>
-        client.callTool({ name: 'call_procedure', arguments: { sql: 'EXEC dbo.GetOrders' } }),
+        client.callTool({ name: 'execute', arguments: { sql: 'DELETE FROM t' } }),
     );
     await close();
 });
@@ -200,7 +182,6 @@ test('call_procedure 가 sql 과 maxRows 를 드라이버로 전달한다', asyn
                 };
             },
         }),
-        true,
     );
     await client.callTool({
         name: 'call_procedure',
@@ -212,7 +193,7 @@ test('call_procedure 가 sql 과 maxRows 를 드라이버로 전달한다', asyn
 });
 
 test('call_procedure 는 결과 집합과 영향받은 행을 함께 보고한다', async () => {
-    const { client, close } = await connect(stubDriver(), true);
+    const { client, close } = await connect(stubDriver());
     const r = await client.callTool({
         name: 'call_procedure',
         arguments: { sql: 'EXEC dbo.GetOrders' },
@@ -234,7 +215,6 @@ test('결과 집합이 없는 프로시저는 행 수만 알린다', async () =>
                 rowsAffected: 5,
             }),
         }),
-        true,
     );
     const r = await client.callTool({
         name: 'call_procedure',
@@ -245,7 +225,7 @@ test('결과 집합이 없는 프로시저는 행 수만 알린다', async () =>
 });
 
 test('list_procedures 가 프로시저를 렌더링한다', async () => {
-    const { client, close } = await connect(stubDriver(), true);
+    const { client, close } = await connect(stubDriver());
     const r = await client.callTool({ name: 'list_procedures', arguments: {} });
     assert.match(JSON.stringify(r.content), /dbo \| GetOrders/);
     await close();
@@ -260,7 +240,6 @@ test('describe_procedure 의 schema 기본값은 dbo 다', async () => {
                 return [];
             },
         }),
-        true,
     );
     await client.callTool({ name: 'describe_procedure', arguments: { name: 'GetOrders' } });
     assert.equal(seen, 'dbo');
@@ -268,7 +247,7 @@ test('describe_procedure 의 schema 기본값은 dbo 다', async () => {
 });
 
 test('call_procedure 는 destructiveHint 를 붙인다', async () => {
-    const { client, close } = await connect(stubDriver(), true);
+    const { client, close } = await connect(stubDriver());
     const { tools } = await client.listTools();
     const call = tools.find((t) => t.name === 'call_procedure');
     // 프로시저 본문을 알 수 없으므로 readOnly 라고 주장하면 안 된다.
