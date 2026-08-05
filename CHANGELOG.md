@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0](https://github.com/gong-yeongbin/database-mcp/compare/v0.1.1...v0.2.0) (2026-08-05)
+
+### Features
+
+* ALLOW_PROCEDURE 환경변수를 제거하고 프로시저 tool 을 항상 등록 ([15b86c1](https://github.com/gong-yeongbin/database-mcp/commit/15b86c118ca81c4cacb11fd6fa9403e0edbf7a5e))
+
 ## [0.1.1](https://github.com/gong-yeongbin/database-mcp/compare/v0.1.0...v0.1.1) (2026-07-31)
 
 ### Bug Fixes
