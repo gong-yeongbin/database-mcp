@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0](https://github.com/gong-yeongbin/database-mcp/compare/v0.2.0...v0.3.0) (2026-08-06)
+
+### Features
+
+* PostgreSQL / MySQL 지원을 추가 ([c3f68ce](https://github.com/gong-yeongbin/database-mcp/commit/c3f68ced27ec62b3fefc8c6bac1b9f96d00a7466))
+
 ## [0.2.0](https://github.com/gong-yeongbin/database-mcp/compare/v0.1.1...v0.2.0) (2026-08-05)
 
 ### Features
