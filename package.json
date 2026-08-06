@@ -1,7 +1,7 @@
 {
   "name": "@dudqls816/database-mcp",
   "version": "0.2.0",
-  "description": "MCP server for querying Microsoft SQL Server databases",
+  "description": "MCP server for querying SQL Server, PostgreSQL, and MySQL databases",
   "license": "MIT",
   "author": "공영빈 <youngbin816@gmail.com>",
   "repository": {
@@ -17,6 +17,9 @@
     "modelcontextprotocol",
     "mssql",
     "sqlserver",
+    "postgresql",
+    "postgres",
+    "mysql",
     "database",
     "claude"
   ],
@@ -42,6 +45,8 @@
   "dependencies": {
     "@modelcontextprotocol/server": "2.0.0",
     "mssql": "12.7.0",
+    "mysql2": "^3.23.2",
+    "pg": "^8.22.0",
     "zod": "^4.2.0"
   },
   "devDependencies": {
@@ -49,6 +54,7 @@
     "@release-it/conventional-changelog": "^12.0.0",
     "@types/mssql": "^12.3.0",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.20.4",
     "conventional-changelog-conventionalcommits": "^10.2.1",
     "release-it": "^21.0.0",
     "typescript": "^5.7.0"

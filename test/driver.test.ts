@@ -55,32 +55,32 @@ const rejected: Array<[string, string]> = [
 
 for (const sql of allowed) {
     test(`허용: ${JSON.stringify(sql)}`, () => {
-        assert.doesNotThrow(() => assertReadOnly(sql));
+        assert.doesNotThrow(() => assertReadOnly(sql, 'mssql'));
     });
 }
 
 for (const [sql, why] of rejected) {
     test(`거부(${why}): ${JSON.stringify(sql)}`, () => {
-        assert.throws(() => assertReadOnly(sql));
+        assert.throws(() => assertReadOnly(sql, 'mssql'));
     });
 }
 
 test('중첩 블록 주석을 올바르게 건너뛴다', () => {
     // 중첩 주석이 제대로 닫히면 SELECT 1 만 남는다.
-    assert.doesNotThrow(() => assertReadOnly('SELECT /* 바깥 /* 안쪽 */ 여전히 주석 */ 1'));
+    assert.doesNotThrow(() => assertReadOnly('SELECT /* 바깥 /* 안쪽 */ 여전히 주석 */ 1', 'mssql'));
     // 중첩 주석 뒤에 숨긴 쓰기는 잡아야 한다.
-    assert.throws(() => assertReadOnly('SELECT /* /* */ */ 1; DROP TABLE t'));
+    assert.throws(() => assertReadOnly('SELECT /* /* */ */ 1; DROP TABLE t', 'mssql'));
 });
 
 test('이스케이프된 인용부호를 문자열 종료로 착각하지 않는다', () => {
     // 'It''s' 는 하나의 문자열이다. 뒤의 DROP 은 리터럴 밖이므로 거부해야 한다.
-    assert.throws(() => assertReadOnly("SELECT 'It''s' ; DROP TABLE t"));
+    assert.throws(() => assertReadOnly("SELECT 'It''s' ; DROP TABLE t", 'mssql'));
     // 리터럴 안에 있으면 허용한다.
-    assert.doesNotThrow(() => assertReadOnly("SELECT 'It''s fine, no DROP here' AS msg"));
+    assert.doesNotThrow(() => assertReadOnly("SELECT 'It''s fine, no DROP here' AS msg", 'mssql'));
 });
 
 test('대괄호 식별자 안의 키워드는 무시한다', () => {
-    assert.doesNotThrow(() => assertReadOnly('SELECT [insert] FROM [delete]'));
+    assert.doesNotThrow(() => assertReadOnly('SELECT [insert] FROM [delete]', 'mssql'));
 });
 
 const procAllowed = [
@@ -130,18 +130,18 @@ const procRejected: Array<[string, string]> = [
 
 for (const sql of procAllowed) {
     test(`프로시저 허용: ${JSON.stringify(sql)}`, () => {
-        assert.doesNotThrow(() => assertProcedureCall(sql));
+        assert.doesNotThrow(() => assertProcedureCall(sql, 'mssql'));
     });
 }
 
 for (const [sql, why] of procRejected) {
     test(`프로시저 거부(${why}): ${JSON.stringify(sql)}`, () => {
-        assert.throws(() => assertProcedureCall(sql));
+        assert.throws(() => assertProcedureCall(sql, 'mssql'));
     });
 }
 
 test('프로시저 가드는 읽기 전용을 보장하지 않는다', () => {
     // 프로시저 본문이 무엇을 하는지는 이름으로 알 수 없다. 이 가드의
     // 목적은 문장 이어붙이기 차단뿐이고, 실제 통제는 SQL 권한이다.
-    assert.doesNotThrow(() => assertProcedureCall('EXEC dbo.DeleteAllUsers'));
+    assert.doesNotThrow(() => assertProcedureCall('EXEC dbo.DeleteAllUsers', 'mssql'));
 });

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { buildServer } from '../src/index.ts';
+import type { ServerOpts } from '../src/index.ts';
 import type {
     Column,
     Driver,
@@ -53,8 +54,13 @@ function stubDriver(over: Partial<Driver> = {}): Driver {
 }
 
 /** 서버를 메모리 트랜스포트로 클라이언트에 연결한다. */
-async function connect(driver: Driver) {
-    const server = buildServer(driver, { maxRows: 1000 });
+async function connect(driver: Driver, opts: Partial<ServerOpts> = {}) {
+    const server = buildServer(driver, {
+        maxRows: 1000,
+        defaultSchema: 'dbo',
+        dialect: 'mssql',
+        ...opts,
+    });
     const [clientT, serverT] = InMemoryTransport.createLinkedPair();
     const client = new Client({ name: 'test', version: '0' });
     await Promise.all([server.connect(serverT), client.connect(clientT)]);
@@ -244,6 +250,41 @@ test('describe_procedure 의 schema 기본값은 dbo 다', async () => {
     await client.callTool({ name: 'describe_procedure', arguments: { name: 'GetOrders' } });
     assert.equal(seen, 'dbo');
     await close();
+});
+
+test('defaultSchema 가 describe 계열의 기본값이 된다', async () => {
+    let seenTable = '';
+    let seenProc = '';
+    const { client, close } = await connect(
+        stubDriver({
+            describeTable: async (schema) => {
+                seenTable = schema;
+                return [];
+            },
+            describeProcedure: async (schema) => {
+                seenProc = schema;
+                return [];
+            },
+        }),
+        { defaultSchema: 'public', dialect: 'postgres' },
+    );
+    await client.callTool({ name: 'describe_table', arguments: { table: 'users' } });
+    await client.callTool({ name: 'describe_procedure', arguments: { name: 'get_orders' } });
+    assert.equal(seenTable, 'public');
+    assert.equal(seenProc, 'public');
+    await close();
+});
+
+test('call_procedure 설명이 방언을 따른다', async () => {
+    const mssql = await connect(stubDriver());
+    const { tools: mssqlTools } = await mssql.client.listTools();
+    assert.match(mssqlTools.find((t) => t.name === 'call_procedure')?.description ?? '', /EXEC/);
+    await mssql.close();
+
+    const pg = await connect(stubDriver(), { defaultSchema: 'public', dialect: 'postgres' });
+    const { tools: pgTools } = await pg.client.listTools();
+    assert.match(pgTools.find((t) => t.name === 'call_procedure')?.description ?? '', /CALL/);
+    await pg.close();
 });
 
 test('call_procedure 는 destructiveHint 를 붙인다', async () => {

@@ -149,7 +149,7 @@ export class MssqlDriver implements Driver {
         params: Record<string, unknown>,
         maxRows: number,
     ): Promise<QueryResult> {
-        assertReadOnly(text);
+        assertReadOnly(text, 'mssql');
 
         const pool = await this.getPool();
         const request = pool.request();
@@ -197,7 +197,7 @@ export class MssqlDriver implements Driver {
      * 이스케이프를 책임진다.
      */
     async callProcedure(text: string, maxRows: number): Promise<ProcedureResult> {
-        assertProcedureCall(text);
+        assertProcedureCall(text, 'mssql');
 
         const pool = await this.getPool();
         const request = pool.request();

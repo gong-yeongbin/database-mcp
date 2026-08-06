@@ -74,7 +74,7 @@ test('잘리면 반환 행과 전체 행을 모두 알린다', () => {
     );
     assert.match(out, /4,213행 중 1,000행 표시/);
     assert.match(out, /3,213행 잘림/);
-    assert.match(out, /TOP 이나 WHERE/);
+    assert.match(out, /TOP\/LIMIT 이나 WHERE/);
 });
 
 test('상한 경계 999 / 1000 / 1001', () => {

@@ -5,8 +5,11 @@ import { McpServer } from '@modelcontextprotocol/server';
 import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod';
 import { loadConfig } from './config.ts';
+import type { Config } from './config.ts';
 import { MssqlDriver } from './mssql.ts';
-import type { Driver } from './driver.ts';
+import { PostgresDriver } from './postgres.ts';
+import { MysqlDriver } from './mysql.ts';
+import type { DialectName, Driver } from './driver.ts';
 import {
     formatColumns,
     formatParameters,
@@ -26,8 +29,19 @@ async function guard(fn: () => Promise<string>) {
     }
 }
 
-export function buildServer(driver: Driver, opts: { maxRows: number }): McpServer {
+export interface ServerOpts {
+    maxRows: number;
+    /** describe 계열 tool 의 기본 스키마. mssql=dbo, postgres=public, mysql=접속 DB */
+    defaultSchema: string;
+    dialect: DialectName;
+}
+
+export function buildServer(driver: Driver, opts: ServerOpts): McpServer {
     const server = new McpServer({ name: '@dudqls816/database-mcp', version: '0.1.0' });
+
+    // 프로시저 호출 문법이 방언마다 다르다. T-SQL 은 EXEC, 나머지는 CALL.
+    const procKeyword = opts.dialect === 'mssql' ? 'EXEC' : 'CALL';
+    const procExample = opts.dialect === 'mssql' ? 'EXEC dbo.GetOrders @userId = 42' : 'CALL get_orders(42)';
 
     server.registerTool(
         'list_tables',
@@ -46,7 +60,10 @@ export function buildServer(driver: Driver, opts: { maxRows: number }): McpServe
             description: '테이블의 컬럼, 자료형, NULL 허용 여부, 기본값, 기본키를 조회합니다.',
             inputSchema: z.object({
                 table: z.string().describe('테이블 이름'),
-                schema: z.string().default('dbo').describe('스키마 이름. 기본값 dbo'),
+                schema: z
+                    .string()
+                    .default(opts.defaultSchema)
+                    .describe(`스키마 이름. 기본값 ${opts.defaultSchema}`),
             }),
             annotations: { readOnlyHint: true },
         },
@@ -59,7 +76,7 @@ export function buildServer(driver: Driver, opts: { maxRows: number }): McpServe
         {
             title: '읽기 전용 쿼리',
             description:
-                'SELECT 문 하나를 실행합니다. 여러 문장, 쓰기, EXEC 는 거부됩니다. ' +
+                'SELECT 문 하나를 실행합니다. 여러 문장, 쓰기, 프로시저 실행은 거부됩니다. ' +
                 '파라미터는 @이름 형태로 쓰고 params 로 값을 넘기세요. ' +
                 '파라미터는 값만 바인딩할 수 있어 테이블명이나 컬럼명에는 쓸 수 없습니다.',
             inputSchema: z.object({
@@ -100,7 +117,10 @@ export function buildServer(driver: Driver, opts: { maxRows: number }): McpServe
             description: '프로시저의 파라미터 이름, 자료형, 입출력 방향을 조회합니다.',
             inputSchema: z.object({
                 name: z.string().describe('프로시저 이름'),
-                schema: z.string().default('dbo').describe('스키마 이름. 기본값 dbo'),
+                schema: z
+                    .string()
+                    .default(opts.defaultSchema)
+                    .describe(`스키마 이름. 기본값 ${opts.defaultSchema}`),
             }),
             annotations: { readOnlyHint: true },
         },
@@ -115,12 +135,12 @@ export function buildServer(driver: Driver, opts: { maxRows: number }): McpServe
         {
             title: '프로시저 실행',
             description:
-                'EXEC 문장 하나로 저장 프로시저를 실행합니다. 여러 문장과 sp_executesql 은 거부됩니다. ' +
+                `${procKeyword} 문장 하나로 저장 프로시저를 실행합니다. 여러 문장과 동적 SQL 은 거부됩니다. ` +
                 '프로시저 본문이 데이터를 바꿀 수 있으므로 되돌릴 수 없습니다. ' +
-                '파라미터 값은 EXEC 문장 안에 직접 써야 하니 문자열은 따옴표를 이스케이프하세요. ' +
-                '예: EXEC dbo.GetOrders @userId = 42',
+                `파라미터 값은 ${procKeyword} 문장 안에 직접 써야 하니 문자열은 따옴표를 이스케이프하세요. ` +
+                `예: ${procExample}`,
             inputSchema: z.object({
-                sql: z.string().describe("실행할 EXEC 문장 하나. 예: EXEC dbo.GetOrders @id = 1"),
+                sql: z.string().describe(`실행할 ${procKeyword} 문장 하나. 예: ${procExample}`),
                 maxRows: z
                     .number()
                     .int()
@@ -140,10 +160,25 @@ export function buildServer(driver: Driver, opts: { maxRows: number }): McpServe
     return server;
 }
 
+function createDriver(config: Config): Driver {
+    switch (config.kind) {
+        case 'mssql':
+            return new MssqlDriver(config.db);
+        case 'postgres':
+            return new PostgresDriver(config.db);
+        case 'mysql':
+            return new MysqlDriver(config.db);
+    }
+}
+
 async function main() {
     const config = loadConfig();
-    const driver = new MssqlDriver(config.db);
-    const server = buildServer(driver, config);
+    const driver = createDriver(config);
+    const server = buildServer(driver, {
+        maxRows: config.maxRows,
+        defaultSchema: config.defaultSchema,
+        dialect: config.kind,
+    });
 
     for (const signal of ['SIGINT', 'SIGTERM'] as const) {
         process.on(signal, () => {
@@ -154,8 +189,7 @@ async function main() {
     await server.connect(new StdioServerTransport());
     // stdout 은 JSON-RPC 전용이다. 로그는 반드시 stderr 로 보낸다.
     console.error(
-        `database-mcp 시작. ${config.db.server}:${config.db.port}/${config.db.database} ` +
-            `(최대 ${config.maxRows}행)`,
+        `database-mcp 시작. [${config.kind}] ${config.label} (최대 ${config.maxRows}행)`,
     );
 }
 

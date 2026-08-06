@@ -31,7 +31,7 @@ export function formatQueryResult(r: QueryResult): string {
     if (r.truncated) {
         notes.push(
             `${nf.format(r.totalRows)}행 중 ${nf.format(r.rowCount)}행 표시 ` +
-                `(${nf.format(r.totalRows - r.rowCount)}행 잘림). TOP 이나 WHERE 로 범위를 좁히세요.`,
+                `(${nf.format(r.totalRows - r.rowCount)}행 잘림). TOP/LIMIT 이나 WHERE 로 범위를 좁히세요.`,
         );
     } else {
         notes.push(`${nf.format(r.rowCount)}행.`);

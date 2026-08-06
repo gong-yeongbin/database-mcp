@@ -1,6 +1,6 @@
 # @dudqls816/database-mcp
 
-Microsoft SQL Server 를 조회하는 MCP 서버. LLM 이 스키마를 탐색하고 쿼리를 실행할 수 있게 한다.
+SQL Server / PostgreSQL / MySQL 을 조회하는 MCP 서버. LLM 이 스키마를 탐색하고 쿼리를 실행할 수 있게 한다. `DATABASE_URL` 의 스킴(`mssql://` `postgres://` `mysql://`)이 드라이버를 결정한다.
 
 **`SELECT` 조회만 한다.** 임의 SQL 을 실행하는 tool 은 없고, 서버의 쓰기 가드는 보조
 장치다. 실제 통제는 [읽기 전용 DB 계정](#빠른-시작)이다.
@@ -18,11 +18,30 @@ Microsoft SQL Server 를 조회하는 MCP 서버. LLM 이 스키마를 탐색하
 **1. 읽기 전용 계정을 만든다.** 이것이 유일하게 우회 불가능한 통제다. 서버의 쓰기 가드를
 포함한 나머지 장치는 전부 우회할 수 있다.
 
+SQL Server.
+
 ```sql
 CREATE LOGIN mcp_ro WITH PASSWORD = 'Str0ng!Passw0rd';
 USE mydb;
 CREATE USER mcp_ro FOR LOGIN mcp_ro;
 ALTER ROLE db_datareader ADD MEMBER mcp_ro;
+```
+
+PostgreSQL.
+
+```sql
+CREATE ROLE mcp_ro LOGIN PASSWORD 'Str0ng!Passw0rd';
+GRANT CONNECT ON DATABASE mydb TO mcp_ro;
+GRANT USAGE ON SCHEMA public TO mcp_ro;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_ro;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO mcp_ro;
+```
+
+MySQL.
+
+```sql
+CREATE USER 'mcp_ro'@'%' IDENTIFIED BY 'Str0ng!Passw0rd';
+GRANT SELECT ON mydb.* TO 'mcp_ro'@'%';
 ```
 
 권한을 더 좁히는 방법은 [DB 권한으로 좁히기](#db-권한으로-좁히기)에 있다.
@@ -119,19 +138,27 @@ npm ls -g @dudqls816/database-mcp          # 전역 설치된 버전
 
 | 변수 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- |
-| `DATABASE_URL` | O | — | `mssql://user:password@host:1433/database` |
+| `DATABASE_URL` | O | — | 아래 스킴 중 하나 |
 | `MAX_ROWS` | X | `1000` | `query` 가 반환할 최대 행 수 |
 
-`DATABASE_URL` 의 특수문자는 URL 인코딩한다. SQL Server 비밀번호에 `@` `:` `/` 가 흔하다.
+```
+mssql://user:password@host:1433/database
+postgres://user:password@host:5432/database    (postgresql:// 도 동일)
+mysql://user:password@host:3306/database
+```
+
+포트를 생략하면 방언별 기본 포트(1433 / 5432 / 3306)를 쓴다. 특수문자는 URL 인코딩한다.
+비밀번호에 `@` `:` `/` 가 흔하다.
 
 ```
 Str0ng!P@ss  ->  mssql://sa:Str0ng%21P%40ss@localhost:1433/mydb
 ```
 
-TLS 옵션은 query string 으로 조절한다. 둘 다 기본이 `true` 다.
+TLS 옵션은 query string 으로 조절한다.
 
 ```
-mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false
+mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false   # 둘 다 기본 true
+postgres://app:pw@host:5432/mydb?ssl=true    # pg/mysql 은 기본 꺼짐. 켜면 인증서 검증 없이 연결
 ```
 
 ## Tool
@@ -144,7 +171,8 @@ mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false
 | `describe_table` | 컬럼, 자료형, NULL 허용, 기본값, 기본키 |
 | `query` | `SELECT` 한 문장 실행 |
 
-`query` 는 `@이름` 파라미터를 지원한다.
+`query` 는 세 방언 모두 `@이름` 파라미터를 지원한다. PostgreSQL 은 `$n`, MySQL 은 `?` 로
+서버가 내부에서 변환하므로 호출자는 방언을 신경 쓰지 않아도 된다.
 
 ```json
 {
@@ -198,8 +226,8 @@ claude mcp remove dudqls816-database -s local
 **쓰기 차단은 편의 기능이고, 실제 통제는 DB 계정이다.**
 
 임의 SQL 을 실행하는 tool 은 등록 자체가 되지 않는다. `query` 는 여러 문장,
-`SELECT`/`WITH` 로 시작하지 않는 문장, 쓰기 키워드를 거부한다. 다만 문자열 검사로 T-SQL 의
-모든 부수 효과를 막을 수는 없다. **이 가드는 LLM 의 실수를 막는 장치이고 보안 경계가 아니다.**
+`SELECT`/`WITH` 로 시작하지 않는 문장, 쓰기 키워드를 방언별 규칙으로 거부한다. 다만 문자열
+검사로 SQL 의 모든 부수 효과를 막을 수는 없다. **이 가드는 LLM 의 실수를 막는 장치이고 보안 경계가 아니다.**
 
 Claude Code 의 `permissions` 설정으로 tool 호출을 추가로 막을 수도 있으나, 그것은 Claude 가
 이 서버를 통해 부르는 호출만 막는 편의 층이다. 이 문서는 우회가 불가능한 DB 계정 권한만 다룬다.
@@ -246,7 +274,9 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 ```
 
 키워드 목록(`INSERT`, `UPDATE`, `DELETE`, `EXEC`, `DROP` 등)에 없는 수단은 걸러지지 않는다.
-목록을 늘려도 근본적으로 파서가 아니라 문자열 검사이므로 완전해질 수 없다.
+목록을 늘려도 근본적으로 파서가 아니라 문자열 검사이므로 완전해질 수 없다. PostgreSQL 의
+`dblink`/FDW 경유 실행, MySQL·PostgreSQL 의 부수 효과 있는 사용자 함수도 같은 이유로
+가드를 통과한다.
 
 정리하면 이렇다.
 
@@ -285,6 +315,9 @@ RECONFIGURE;
 
 권한을 좁힌 계정을 쓰면 위 우회 경로를 모두 시도해도 SQL Server 가 거부한다.
 
+PostgreSQL / MySQL 도 원리는 같다. `GRANT SELECT ON ALL TABLES`(pg) 나 `GRANT SELECT ON
+mydb.*`(mysql) 대신 테이블별 `GRANT SELECT` 로 좁히면 된다. 위 SQL 은 SQL Server 전용이다.
+
 ## 알아둘 것
 
 **DB 연결은 첫 tool 호출 때 이루어진다.**
@@ -292,8 +325,9 @@ DB 가 꺼져 있어도 서버는 정상 시작하고 `claude mcp get` 이 `✔ 
 실패는 tool 에러로 보고되고 DB 가 복구되면 다음 호출에서 회복된다.
 
 **행 상한은 출력만 줄이고 서버 작업량은 줄이지 않는다.**
-`SELECT * FROM huge_table` 은 SQL Server 가 여전히 전체 결과를 만든다. 큰 테이블은 `TOP` 이나
-`WHERE` 로 직접 좁힌다. 30초 타임아웃이 걸려 있다.
+`SELECT * FROM huge_table` 은 DB 서버가 여전히 전체 결과를 만든다. 큰 테이블은 `TOP`/`LIMIT`
+이나 `WHERE` 로 직접 좁힌다. SQL Server 와 PostgreSQL 은 30초 타임아웃이 걸려 있다.
+MySQL 은 클라이언트 쪽 문장 타임아웃이 없어 서버 설정(`max_execution_time`)으로 다룬다.
 
 **DECIMAL / NUMERIC 은 조용히 손실될 수 있다.**
 JS `number` 로 변환되므로 2^53 을 넘거나 scale 이 큰 값은 에러 없이 틀린다. 금액 컬럼은
