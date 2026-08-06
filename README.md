@@ -2,26 +2,21 @@
 
 Microsoft SQL Server 를 조회하는 MCP 서버. LLM 이 스키마를 탐색하고 쿼리를 실행할 수 있게 한다.
 
-**`SELECT` 와 저장 프로시저 실행만 한다.** 임의 SQL 을 실행하는 tool 은 없다. 프로시저
-실행(`call_procedure`)이 유일하게 남은 쓰기 경로이고, 이것을 좁히는 수단은
-[DB 계정 권한](#계정-만들기)뿐이다.
+**`SELECT` 조회만 한다.** 임의 SQL 을 실행하는 tool 은 없고, 서버의 쓰기 가드는 보조
+장치다. 실제 통제는 [읽기 전용 DB 계정](#빠른-시작)이다.
 
 ## 목차
 
-**쓰기 시작하려면** — [빠른 시작](#빠른-시작) · [업데이트](#업데이트) · [환경변수](#환경변수) · [Tool](#tool)
+**쓰기 시작하려면** — [빠른 시작](#빠른-시작) · [업데이트](#업데이트) · [환경변수](#환경변수) · [Tool](#tool) · [스코프와 저장 위치](#스코프와-저장-위치)
 
-**프로시저를 쓰려면** — [계정 만들기](#계정-만들기) · [프로시저](#프로시저) · [알아야 할 것](#알아야-할-것)
-
-**설정을 이해하려면** — [두 개의 층](#두-개의-층) · [스코프와 저장 위치](#스코프와-저장-위치)
-
-**보안을 검토하려면** — [무엇이 실제로 통제되는가](#보안-무엇이-실제로-통제되는가) · [우회 가능한 경로](#우회-가능한-경로) · [permissions 로 좁히기](#permissions-로-좁히기) · [프로시저 DDL](#프로시저-ddl-은-어떻게-막히나) · [DB 권한으로 좁히기](#db-권한으로-좁히기)
+**보안을 검토하려면** — [무엇이 실제로 통제되는가](#보안-무엇이-실제로-통제되는가) · [우회 가능한 경로](#우회-가능한-경로) · [DB 권한으로 좁히기](#db-권한으로-좁히기)
 
 **운영 중 걸리는 것** — [알아둘 것](#알아둘-것)
 
 ## 빠른 시작
 
-**1. 읽기 전용 계정을 만든다.** 이것이 유일하게 우회 불가능한 통제다. 뒤에 나오는 설정은
-전부 우회할 수 있다.
+**1. 읽기 전용 계정을 만든다.** 이것이 유일하게 우회 불가능한 통제다. 서버의 쓰기 가드를
+포함한 나머지 장치는 전부 우회할 수 있다.
 
 ```sql
 CREATE LOGIN mcp_ro WITH PASSWORD = 'Str0ng!Passw0rd';
@@ -30,8 +25,7 @@ CREATE USER mcp_ro FOR LOGIN mcp_ro;
 ALTER ROLE db_datareader ADD MEMBER mcp_ro;
 ```
 
-`db_datareader` 에는 `EXECUTE` 가 없어 프로시저는 실행되지 않는다. 프로시저를 써야 하면
-[계정 만들기](#계정-만들기)로 간다.
+권한을 더 좁히는 방법은 [DB 권한으로 좁히기](#db-권한으로-좁히기)에 있다.
 
 **2. 서버를 등록한다.** 설치는 따로 하지 않는다. `npx` 가 패키지를 받아 실행한다.
 
@@ -128,8 +122,6 @@ npm ls -g @dudqls816/database-mcp          # 전역 설치된 버전
 | `DATABASE_URL` | O | — | `mssql://user:password@host:1433/database` |
 | `MAX_ROWS` | X | `1000` | `query` 가 반환할 최대 행 수 |
 
-**프로시저를 끄는 환경변수는 없다.** 이유와 대안은 [계정 만들기](#계정-만들기)에 있다.
-
 `DATABASE_URL` 의 특수문자는 URL 인코딩한다. SQL Server 비밀번호에 `@` `:` `/` 가 흔하다.
 
 ```
@@ -144,16 +136,13 @@ mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false
 
 ## Tool
 
-설정과 무관하게 6개가 항상 등록된다.
+조회 tool 3개를 제공한다.
 
-| Tool | 설명 | 쓰기 |
-| --- | --- | --- |
-| `list_tables` | 모든 테이블과 뷰를 스키마와 함께 나열 | — |
-| `describe_table` | 컬럼, 자료형, NULL 허용, 기본값, 기본키 | — |
-| `query` | `SELECT` 한 문장 실행 | — |
-| `list_procedures` | 저장 프로시저를 스키마와 최종 수정일과 함께 나열 | — |
-| `describe_procedure` | 프로시저의 파라미터 이름, 자료형, 입출력 방향 | — |
-| `call_procedure` | `EXEC` 한 문장 실행 | **가능** |
+| Tool | 설명 |
+| --- | --- |
+| `list_tables` | 모든 테이블과 뷰를 스키마와 함께 나열 |
+| `describe_table` | 컬럼, 자료형, NULL 허용, 기본값, 기본키 |
+| `query` | `SELECT` 한 문장 실행 |
 
 `query` 는 `@이름` 파라미터를 지원한다.
 
@@ -165,137 +154,6 @@ mssql://sa:pw@localhost:1433/mydb?encrypt=false&trustServerCertificate=false
 ```
 
 파라미터는 값만 바인딩한다. 테이블명과 컬럼명은 파라미터로 바꿀 수 없다.
-
-## 계정 만들기
-
-**프로시저 tool 은 끌 수 없다.** `call_procedure` 가 무엇을 실행할 수 있는지는 계정 권한으로만
-정해진다.
-
-환경변수로 끄는 방식을 두지 않은 이유는 이렇다. 그 설정은 tool 이 모델에게 보이는지만
-정하므로 설정 파일을 고치거나 서버를 다른 값으로 재실행하면 우회된다. 반면 계정에
-`EXECUTE` 를 주지 않으면 어떤 경로로 붙어도 SQL Server 가 거부한다. **통제 지점을 하나로
-모아 두는 편이 두 곳에 흩어 놓는 것보다 안전하다.**
-
-| 용도 | 권한 | `call_procedure` |
-| --- | --- | --- |
-| 읽기만 | `db_datareader` | 서버가 거부. tool 은 보이지만 실행 불가 |
-| 읽기 + 지정한 프로시저 | `db_datareader` + 프로시저별 `GRANT EXECUTE` | 허용한 것만 실행 |
-| 읽기 + 모든 프로시저 | `db_datareader` + `GRANT EXECUTE TO` | **권하지 않는다** |
-
-**읽기만 하면** [빠른 시작](#빠른-시작)의 계정이 그대로 답이다. `EXECUTE` 를 주지 않았으므로
-프로시저는 하나도 실행되지 않는다. 이때도 `list_procedures` 와 `describe_procedure` 는
-동작하므로, 목록과 파라미터만 보고 실행은 막고 싶을 때 쓰는 조합이다.
-
-**프로시저를 호출해야 하면** 그 계정에 필요한 프로시저만 더한다. `GRANT EXECUTE TO mcp_ro`
-처럼 통째로 주지 않는다. 그러면 `sp_rename`, `sp_addrolemember` 같은 시스템 프로시저까지
-열린다.
-
-```sql
--- 목록에 없는 프로시저는 tool 을 통과해도 서버가 거부한다.
-GRANT EXECUTE ON dbo.GetOrders   TO mcp_ro;
-GRANT EXECUTE ON dbo.GetProducts TO mcp_ro;
-```
-
-`GRANT EXECUTE` 는 **실행 권한만** 준다. 프로시저 정의를 바꾸는 `ALTER` / `DROP PROCEDURE` 는
-포함되지 않으므로, 이 계정으로는 Bash 를 거쳐 직접 붙어도 프로시저를 수정·삭제할 수 없다.
-
-어느 쪽이든 다른 DB 와 시스템 카탈로그는 가린다.
-
-```sql
-DENY VIEW ANY DATABASE   TO mcp_ro;
-DENY VIEW ANY DEFINITION TO mcp_ro;
-```
-
-읽기를 더 좁히려면 `db_datareader` 대신 테이블별로 준다.
-
-```sql
-GRANT SELECT ON dbo.orders   TO mcp_ro;
-GRANT SELECT ON dbo.products TO mcp_ro;
-```
-
-**프로시저 본문은 검사되지 않는다.** `GRANT EXECUTE` 를 준 프로시저가 `DELETE` 를 한다면
-그 `DELETE` 는 실행된다. 무엇을 허용할지 고를 때 본문을 확인하라. 자세한 내용은
-[알아야 할 것](#알아야-할-것)에 있다.
-
-## 프로시저
-
-`list_procedures` 와 `describe_procedure` 는 조회만 한다. 실행은 `call_procedure` 다.
-
-```json
-{ "sql": "EXEC dbo.GetOrders @userId = 42" }
-```
-
-`query` 와 달리 **파라미터를 바인딩하지 않는다.** 값을 `EXEC` 문장 안에 직접 써야 하므로
-문자열은 따옴표를 이스케이프해야 한다. T-SQL 에서는 `'` 를 `''` 로 쓴다.
-
-```json
-{ "sql": "EXEC dbo.Search @name = 'O''Brien'" }
-```
-
-결과 집합과 영향받은 행 수를 함께 보고한다. 결과 집합이 여러 개면 첫 번째만 반환한다.
-
-### 알아야 할 것
-
-**`call_procedure` 는 읽기 전용이 아니다.** 검사하는 것은 호출 문장의 형태뿐이다.
-
-- `EXEC` 또는 `EXECUTE` 로 시작하는가
-- 그 뒤에 **프로시저 이름(식별자)** 이 오는가
-- 문장이 하나인가 (세미콜론으로 이어붙이기 차단)
-- `sp_executesql`, `sp_sqlexec`, `xp_cmdshell` 이라는 이름이 있는가
-
-이름 호출만 받으므로 아래는 거부된다. 임의 SQL 을 실행하는 형태다.
-
-```sql
-EXEC('DROP TABLE users')      -- 괄호 동적 SQL
-EXEC N'DROP TABLE users'      -- 문자열 실행
-EXEC @sql                     -- 변수 실행
-```
-
-**그러나 프로시저 본문은 검사하지 않는다.** 본문이 무엇을 하든 그대로 실행되므로
-이 tool 을 통해 쓰기가 된다.
-
-```sql
-EXEC dbo.DeleteOldOrders      -- 본문의 DELETE 가 실행된다
-EXEC sp_rename 'users', 'u2'  -- 차단 목록에 없는 시스템 프로시저
-```
-
-즉 이 tool 은 **쓰기 경로**다. `destructiveHint` 가 붙는 이유다. 범위를 좁히는 방법은
-[프로시저별 `GRANT EXECUTE`](#계정-만들기) 하나뿐이다.
-
-## 두 개의 층
-
-DB 계정과 Claude Code `permissions` 는 **서로 다른 층**이라 둘 다 맞춰야 한다.
-
-| 설정 | 저장 위치 | 담당 |
-| --- | --- | --- |
-| `GRANT EXECUTE` | DB | 그 계정이 프로시저를 **실행할 수 있는지** |
-| `permissions` | `.claude/settings.local.json` | Claude Code 가 tool 호출을 **허용할지** |
-
-두 층의 성격이 다르다. `permissions` 는 Claude 가 tool 을 부르기 전에 막고, DB 권한은
-어떤 경로로 붙어도 막는다. **`permissions` 만으로는 부족하고, DB 권한만으로 충분하다.**
-
-**`claude mcp add` 는 `permissions` 를 건드리지 않는다.** `.claude/settings.local.json` 이
-자동 생성되지 않으므로, 두 번째 자물쇠를 원하면 직접 만든다.
-
-`.claude/settings.local.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__dudqls816-database__list_tables",
-      "mcp__dudqls816-database__describe_table",
-      "mcp__dudqls816-database__query"
-    ],
-    "deny": [
-      "mcp__dudqls816-database__call_procedure"
-    ]
-  }
-}
-```
-
-`deny` 가 `allow` 보다 우선하므로 `call_procedure` 는 막힌다. 다만 이것은 Claude 의 호출만
-막는다. 계정에 `EXECUTE` 가 남아 있으면 `sqlcmd` 로 직접 붙는 경로는 그대로 열려 있다.
 
 ## 스코프와 저장 위치
 
@@ -343,17 +201,16 @@ claude mcp remove dudqls816-database -s local
 `SELECT`/`WITH` 로 시작하지 않는 문장, 쓰기 키워드를 거부한다. 다만 문자열 검사로 T-SQL 의
 모든 부수 효과를 막을 수는 없다. **이 가드는 LLM 의 실수를 막는 장치이고 보안 경계가 아니다.**
 
+Claude Code 의 `permissions` 설정으로 tool 호출을 추가로 막을 수도 있으나, 그것은 Claude 가
+이 서버를 통해 부르는 호출만 막는 편의 층이다. 이 문서는 우회가 불가능한 DB 계정 권한만 다룬다.
+
 ### 우회 가능한 경로
 
-`permissions` 는 **이 MCP 서버를 통한 호출만** 막는다. 접속 문자열을 읽을 수
+서버의 가드는 **이 MCP 서버를 통한 호출만** 거친다. 접속 문자열을 읽을 수
 있는 프로세스는 그 계정 권한 전부를 행사할 수 있다. 그리고 서버를 통한 호출 중에도
-가드를 빠져나가는 경로가 있다(7~8번).
+가드를 빠져나가는 경로가 있다(4번).
 
-**1. 기본 설치 상태에는 `permissions` 가 없다.**
-`.claude/settings.local.json` 은 설치 시 자동 생성되지 않는다. 직접 작성하지 않으면
-서버가 등록하는 tool 목록 자체가 유일한 통제 수단이다.
-
-**2. 셸에서 직접 접속**
+**1. 셸에서 직접 접속**
 접속 문자열만 있으면 아무 클라이언트로나 붙을 수 있다. `sqlcmd`, DBeaver, TablePlus,
 또는 스크립트 몇 줄이면 된다.
 
@@ -361,39 +218,22 @@ claude mcp remove dudqls816-database -s local
 sqlcmd -S localhost,1433 -U sa -P pw -Q "DELETE FROM users"
 ```
 
-**3. 서버를 다른 계정으로 직접 실행**
+**2. 서버를 다른 계정으로 직접 실행**
 `DATABASE_URL` 에 권한이 더 넓은 계정을 넣어 서버를 띄우면 그 계정의 권한이 그대로 열린다.
+`claude mcp remove` 후 다른 `DATABASE_URL` 로 재등록해도 같다.
 
 ```bash
 DATABASE_URL='mssql://sa:pw@localhost:1433/mydb' npx @dudqls816/database-mcp
 ```
 
-**4. 설정 파일 수정**
-`.claude/settings.local.json` 에서 `deny` 를 지우거나, `claude mcp remove` 후 다른
-`DATABASE_URL` 로 재등록하면 된다.
-
-**5. 다른 MCP 서버 경유**
-`deny` 규칙은 `mcp__dudqls816-database__*` 라는 이름에만 걸린다. DB 에 접근하는 다른 서버는 통제 밖이다.
-
-**6. 접속 정보 노출**
+**3. 접속 정보 노출**
 `DATABASE_URL` 은 `~/.claude.json` 에 평문으로 저장된다. `-s project` 로 등록했다면
 `.mcp.json` 이 git 에 커밋되어 저장소 접근자 전원이 볼 수 있다.
 
 여기까지는 서버 **바깥에서** 우회하는 경로다. 아래는 서버를 정상적으로 쓰면서
 읽기 전용 전제를 벗어나는 경로다.
 
-**7. `call_procedure` 는 남은 유일한 쓰기 경로다.**
-호출 문장의 형태만 검사하고 **프로시저 본문은 검사하지 않는다.** 계정이 실행할 수 있는
-프로시저 중 데이터를 바꾸는 것이 하나라도 있으면 그것으로 쓰기가 된다. 통과하는 형태와
-차단되는 형태는 ["알아야 할 것"](#알아야-할-것)에 있다.
-
-`EXECUTE` 를 통째로 줬다면 시스템 프로시저로 권한 자체를 바꿀 수도 있다.
-
-```sql
-EXEC sp_addrolemember 'db_owner', 'mcp_ro'    -- 권한 상승
-```
-
-**8. `query` 의 키워드 검사는 문자열 매칭이다.**
+**4. `query` 의 키워드 검사는 문자열 매칭이다.**
 `assertReadOnly` 는 주석과 문자열 리터럴을 제거한 뒤 `SELECT` 또는 `WITH` 로 시작하는지 보고
 쓰기 키워드가 있는지 본다. 이 검사를 통과하면서 읽기 범위를 벗어나는 SQL 이 존재한다.
 아래는 모두 현재 가드를 **통과한다**.
@@ -412,144 +252,30 @@ SELECT * FROM sys.sql_logins                            -- 시스템 카탈로�
 
 | 통제 | 우회 |
 | --- | --- |
-| `permissions` 의 `deny` | 1~6 전부 |
-| 임의 SQL tool 부재 | 1~6 전부, 그리고 7 (`call_procedure`) |
-| `query` 의 읽기 전용 가드 | 8 |
+| 임의 SQL tool 부재 | 1~3 전부 |
+| `query` 의 읽기 전용 가드 | 4 |
 | **DB 계정 권한** | **없음** |
-
-### `permissions` 로 좁히기
-
-우회를 좁히는 데는 두 층이 있다. **`permissions` 층은 Claude 가 실행하는 것만** 막고,
-사용자가 터미널에 직접 치는 것은 막지 못한다. **[DB 권한 층](#db-권한으로-좁히기)이 실제 통제다.**
-
-| # | 경로 | `permissions` | DB 권한 |
-| --- | --- | --- | --- |
-| 1 | 셸에서 직접 접속 | `Bash(sqlcmd:*)`, `Bash(node:*)` 등 | O |
-| 2 | 다른 계정으로 재실행 | `Bash(npx:*)` 등 | O |
-| 3 | 설정 파일 수정·재등록 | `Bash(claude mcp add:*)` 등 | O |
-| 4 | 다른 MCP 서버 경유 | 그 서버의 tool 이름을 `deny` | O |
-| 5 | 접속 정보 노출 | `Read(~/.claude.json)` | `-s project` 를 쓰지 않는다 |
-| 6 | `query` 안의 `OPENQUERY` 등 | **불가** | O |
-| 7 | `call_procedure` 의 프로시저 본문 | **불가** | O (`GRANT EXECUTE` 를 좁힌다) |
-
-**6번과 7번은 `permissions` 로 막을 수 없다.** `deny` 는 tool 이름에만 걸리고 `query` 안의
-SQL 문자열도, `EXEC` 뒤의 프로시저 이름도 보지 않는다. tool 을 통째로 `deny` 하면 막히지만
-그러면 그 tool 을 쓰는 의미가 없어진다.
-
-`.claude/settings.local.json`:
-
-```json
-{
-  "permissions": {
-    "allow": [
-      "mcp__dudqls816-database__list_tables",
-      "mcp__dudqls816-database__describe_table",
-      "mcp__dudqls816-database__query",
-      "mcp__dudqls816-database__list_procedures",
-      "mcp__dudqls816-database__describe_procedure",
-      "mcp__dudqls816-database__call_procedure"
-    ],
-    "deny": [
-      "Bash(sqlcmd:*)",
-      "Bash(mssql-cli:*)",
-      "Bash(bcp:*)",
-      "Bash(isql:*)",
-      "Bash(osql:*)",
-
-      "Bash(node:*)",
-      "Bash(python:*)",
-      "Bash(python3:*)",
-      "Bash(npx:*)",
-      "Bash(tsx:*)",
-      "Bash(deno:*)",
-      "Bash(bun:*)",
-
-      "Bash(claude mcp add:*)",
-      "Bash(claude mcp remove:*)",
-      "Read(~/.claude.json)",
-      "Read(.mcp.json)"
-    ]
-  }
-}
-```
-
-`list_procedures` 와 `describe_procedure` 는 `readOnlyHint` 인 조회 tool 이라 함께 허용한다.
-이것이 없으면 프로시저 이름과 파라미터를 모르는 채로 `call_procedure` 를 써야 한다.
-
-**프로시저를 쓰지 않는다면** `call_procedure` 를 `allow` 에서 빼고 `deny` 로 옮긴다. tool 은
-여전히 등록되지만 Claude 가 부를 수 없다. 계정에서 `EXECUTE` 를 회수하는 것과 함께 쓴다.
-
-```json
-"deny": ["mcp__dudqls816-database__call_procedure", "..."]
-```
-
-**런타임을 통째로 막는 이유**
-
-두 번째 묶음(`node`, `python`, `npx` 등)이 **가장 중요하다.** DB 클라이언트 CLI 를 다
-막아도 런타임이 열려 있으면 한 줄로 뚫린다. 이 서버를 설치한 프로젝트에는 `mssql`
-드라이버가 이미 `node_modules` 에 들어 있다.
-
-```bash
-node -e "const sql=require('mssql'); ..."   # sqlcmd 없이도 쓰기가 된다
-python -c "import pymssql; ..."
-npx @dudqls816/database-mcp                        # 서버를 다른 설정으로 재실행
-```
-
-**부작용을 알고 넣어야 한다.** `node` 와 `python` 을 막으면 Claude 가 `npm test`,
-`npm run build`, `tsc`, `node dist/index.js` 를 실행할 수 없다. 즉 위 목록은
-**DB 를 조회만 하는 프로젝트용**이다. 이 MCP 서버나 다른 Node 프로젝트를 개발하는
-저장소에 그대로 넣으면 개발이 막힌다. 개발 저장소라면 런타임 묶음은 빼고 CLI 묶음만 쓴다.
-
-`Bash(node -e:*)`, `Bash(python -c:*)` 처럼 좁혀 막는 방법도 있다. 그러면 `npm test` 는
-살아남지만, 스크립트를 파일로 저장해서 `node script.js` 로 실행하면 통과한다.
-**좁히면 개발은 되지만 층이 얇아진다.** 어느 쪽이든 아래 한계는 그대로다.
-
-이 `Bash` 규칙 전체가 얇은 층이다. 목록을 다 넣어도 아래는 남는다.
-
-- `/usr/bin/sqlcmd` 처럼 절대 경로로 부르면 이름 패턴을 빠져나간다
-- DBeaver, TablePlus 같은 GUI 클라이언트는 `Bash` 를 쓰지 않는다
-- 사용자가 터미널에 직접 치는 것은 `permissions` 와 무관하다
-
-**Claude 의 무심코 하는 우회를 막는 용도이지 의도적 우회를 막지 못한다.**
-
-`Bash` 를 막는 것이 이 구성에서 특히 중요하다. `call_procedure` 하나로 쓰기를 좁혀 놓아도
-`Bash` 가 열려 있으면 그 전제 자체가 무의미해진다.
-
-### 프로시저 DDL 은 어떻게 막히나
-
-`call_procedure` 는 프로시저를 **실행**할 뿐이다. 프로시저 정의를 바꾸는
-`CREATE` / `ALTER` / `DROP PROCEDURE` 는 이 tool 로 실행되지 않는다. `assertProcedureCall`
-이 `EXEC` 로 시작하는 문장만 통과시키기 때문이다. `query` tool 로도 안 된다.
-`assertReadOnly` 의 `FORBIDDEN` 목록에 `CREATE` / `ALTER` / `DROP` 이 있어 거부된다.
-
-즉 프로시저 DDL 은 **MCP 의 어떤 tool 로도 실행할 수 없다.** 남는 경로는 tool 을
-거치지 않는 것뿐이다. `sqlcmd`, `node -e`, `python` 으로 드라이버를 직접 부르는 것이다.
-
-```bash
-sqlcmd -S host -U user -P pw -Q "DROP PROCEDURE dbo.GetOrders"
-node -e "const sql=require('mssql'); ... request().batch('ALTER PROCEDURE dbo.GetOrders ...')"
-```
-
-이 경로는 위 `deny` 목록의 `Bash(sqlcmd:*)`, `Bash(node:*)`, `Bash(python:*)` 등이
-이미 막는다. 프로시저 DDL 을 위해 따로 추가할 `deny` 규칙은 없다. tool 이름이 아니라
-런타임과 CLI 를 막는 것이기 때문이다. 다만 절대 경로 호출과 GUI 클라이언트는
-그대로 빠져나가므로, 확실한 통제는 아래 DB 권한 층이다.
 
 ### DB 권한으로 좁히기
 
-**유일하게 우회 불가능한 통제다.** `permissions` 는 tool 이름에만 걸리므로 `GetOrders` 만
-허용하고 `DeleteOldOrders` 는 막는 구분을 할 수 없다. 그 구분은 DB 에서만 된다.
-계정을 만드는 SQL 은 [계정 만들기](#계정-만들기)에 있고, 여기서는 그 위에 더할 수 있는
-서버 수준 설정만 다룬다.
+**유일하게 우회 불가능한 통제다.** 계정을 만드는 SQL 은 [빠른 시작](#빠른-시작)에 있고,
+여기서는 그 위에 더할 수 있는 설정만 다룬다.
 
-프로시저 정의를 못 바꾸게 굳이 명시하려면 거부한다. `GRANT EXECUTE` 는 실행 권한만 주므로
-보통은 필요하지 않다.
+다른 DB 와 시스템 카탈로그는 가린다.
 
 ```sql
-DENY ALTER, CONTROL ON dbo.GetOrders TO mcp_ro;
+DENY VIEW ANY DATABASE   TO mcp_ro;
+DENY VIEW ANY DEFINITION TO mcp_ro;
 ```
 
-`OPENROWSET`(우회 8번)은 서버 수준 설정으로 끈다. `EXECUTE` 를 주지 않으면 같은 8번의
+읽기를 더 좁히려면 `db_datareader` 대신 테이블별로 준다.
+
+```sql
+GRANT SELECT ON dbo.orders   TO mcp_ro;
+GRANT SELECT ON dbo.products TO mcp_ro;
+```
+
+`OPENROWSET`(우회 4번)은 서버 수준 설정으로 끈다. `EXECUTE` 를 주지 않으면 같은 4번의
 사용자 함수 호출도 함께 막힌다.
 
 ```sql
@@ -558,7 +284,6 @@ RECONFIGURE;
 ```
 
 권한을 좁힌 계정을 쓰면 위 우회 경로를 모두 시도해도 SQL Server 가 거부한다.
-`permissions` 의 `Bash`/`Read` 규칙은 Claude 의 무심한 우회를 막는 보조 층일 뿐이다.
 
 ## 알아둘 것
 
